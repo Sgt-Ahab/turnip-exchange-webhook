@@ -63,5 +63,3 @@ For server arrays or minimalist terminal processes:
 If this radar utility saved you hours of browser-refreshing or helped you secure a massive haul of Bells, consider supporting its development! 
 
 [Support on Buy Me a Coffee](https://buymeacoffee.com/sgtahab)
-
-<a href="https://www.buymeacoffee.com/sgtahab"><img src="https://img.buymeacoffee.com/button-api/?text=Send a sentiment!&emoji=♥️&slug=sgtahab&button_colour=BD5FFF&font_colour=ffffff&font_family=Cookie&outline_colour=000000&coffee_colour=FFDD00" /></a>
