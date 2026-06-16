@@ -36,6 +36,7 @@ An unofficial Python notifier utility that polls Turnips.Exchange at a configura
         - *Minimum Safe Interval* `20` seconds (Do not drop below this to guarantee network integrity).
     - `headless`: Set to `true` for a pure console-only logging loop or `false` to mount the taskbar monitor window.
     - `user_agent`: Fill this out with a reliable browser string to authenticate connections.
+    - `allow_count`: Counts the scans, every five displays count, and 10 reminds how to exit with count. Toggled by `true|false`, default `true`
 
 ---
 
