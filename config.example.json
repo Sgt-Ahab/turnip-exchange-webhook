@@ -6,5 +6,6 @@
     "category": "turnips",
     "islander": "daisy",
     "headless": false,
-    "allow_count": true
+    "allow_count": true,
+    "save_log": false
 }
