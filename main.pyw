@@ -165,7 +165,7 @@ def marketAlert(name, price, queued, turnip_code, description="No description pr
                     "url": "https://dodo.ac/np/images/f/f8/Daisy_Mae_NH_Character_Icon.png",
                 },
                 "footer": {
-                    "text": "Sgt-Ahab Exchange.Turnip Notifier",
+                    "text": "Sgt-Ahab Turnips.exchange Notifier",
                 },
             }
         ]
