@@ -15,20 +15,41 @@ lastCacheClearTime = time.time()
 
 def loadConfig():
     if not CONFIG_PATH.exists():
-        print("Missing config.json. Copy config.example and fill it out.")
+        err_text = "Missing config.json. Copy config.example and fill it out."
+        print(err_text)
+        # Fallback dialog if launched silently via pythonw
+        try:
+            from tkinter import messagebox
+            messagebox.showerror("Configuration Missing", err_text)
+        except Exception:
+            pass
         sys.exit(1)
-    with CONFIG_PATH.open("r", encoding="utf-8") as file:
-        return json.load(file)
-    
+    try:
+        with CONFIG_PATH.open("r", encoding="utf-8") as file:
+            return json.load(file)
+    except json.JSONDecodeError as e:
+        err_syntax = f"Configuration Error: config.json contains invalid syntax;\nReason: {e}"
+        print(f"[System Log]: {err_syntax}")
+        try:
+            from tkinter import messagebox
+            messagebox.showerror("Configuration Syntax Error", err_syntax)
+        except Exception:
+            pass
+        sys.exit(1)
+
 config = loadConfig()
 WEBHOOK_URL = config["webhook_url"]
 TARGET_MIN_PRICE = config.get("target_min_price", 300)
 POLL_INTERVAL_SECONDS = config.get("poll_interval_seconds", 40)
-POLL_INTERVAL_MS = POLL_INTERVAL_SECONDS * 1000
+POLL_INTERVAL_MS = int(POLL_INTERVAL_SECONDS * 1000)
 USER_AGENT_STR = config["user_agent"]
 HEADLESS = config.get("headless", False)
 ALLOW_COUNT = config.get("allow_count", False)
 SAVE_LOG = config.get("save_log", False)
+# This is what island category to search for on the site
+CATEGORY = config.get("category", "turnips")
+# Which villager to select
+ISLANDER = config.get("islander", "daisy")
 
 def headlessLoop():
     try:
@@ -36,11 +57,11 @@ def headlessLoop():
         while True:
             radarCycleOnce()
             time.sleep(POLL_INTERVAL_SECONDS)
-    except KeyboardInterrupt or SystemExit: 
+    except (KeyboardInterrupt, SystemExit): 
         if ALLOW_COUNT or SAVE_LOG:
-            app_log(f"Shutdown requested. Total Completed Scans: {scanCount}")
+            app_log(f"[System Log]: Headless-Shutdown requested. Total Completed Scans: {scanCount}")
         else:
-            app_log("Shutdown requested. Exiting radar.")
+            app_log("[System Log]: Headless-Shutdown requested. Exiting radar.")
 
 
 def radarCycleOnce():
@@ -65,10 +86,12 @@ def radarCycleOnce():
         global scanCount 
         scanCount += 1
         if scanCount % 10 == 0:
-            app_log(
-                f"[System Log]: Completed {scanCount} scans; "
-                "Press Ctrl + C to stop the monitor."
-            )
+            log_msg = f"[System Log]: Completed {scanCount} scans."
+            if HEADLESS:
+                log_msg += " Press Ctrl + C to stop the monitor."
+            else:
+                log_msg += " Close the window to stop the monitor."
+            app_log(log_msg)
         elif scanCount % 5 == 0:
             app_log(
                 f"[System Log]: Completed {scanCount} scans."
@@ -87,8 +110,8 @@ def fetchRawListings():
         "Content-Type": "application/json"
     }
     query_payload = {
-        "category": "turnips",
-        "islander": "daisy",
+        "category": CATEGORY,
+        "islander": ISLANDER,
     }
     try:
         response = requests.post(req_url, headers=headers, json=query_payload, timeout=10)
@@ -110,7 +133,7 @@ def windowLog(message):
         if current_lines > 1000:
             wipeCount += 1
             log_display.delete("1.0", tk.END)
-            total_lines_cleared = wipeCount * 15
+            total_lines_cleared = wipeCount * 1000
             log_display.insert(tk.END, f"[System Log]: Buffer cleared. [Wipe #{wipeCount} | ~ {total_lines_cleared} lines condensed!]\n")
     except Exception:
         pass
@@ -151,9 +174,13 @@ def processFilter(data):
         description = island.get("description", "").lower()
         queued = island.get("queued")
         create_time = island.get("creationTime", "")
-        splitTime = create_time.split(" ")
-        date = splitTime[0] if len(splitTime) > 0 else "Unknown Date"
-        timePost = splitTime[1] if len(splitTime) > 1 else "Unknown Time"
+        if create_time and " " in create_time:
+            splitTime = create_time.split(" ")
+            date = splitTime[0] 
+            timePost = splitTime[1]
+        else:
+            date ="Unknown Date"
+            timePost ="Unknown Time"
         # create_time = island.get("creationTime")
         if turnip_code == "00000000" or name == "No Islands": 
             app_log(
@@ -192,7 +219,7 @@ def marketAlert(name, price, queued, turnip_code, description="No description pr
                 "title": f"📈 Stalk Market Spike on {name}'s Island!",
                 "description": (
                     f"**PRICE:** {price} Bells per turnip.\n"
-                    f"**DESCRIPTION:** {description};"
+                    f"**DESCRIPTION:** {description};\n"
                     f"**CURRENT QUEUE LENGTH:** {queued} players currently awaiting!\n"
                     f"*Posted on: {date}; At {timePost}*; \n"
                     f"[Click Here to Join the Queue](https://turnip.exchange/island/{turnip_code})\n\n"
@@ -211,12 +238,12 @@ def marketAlert(name, price, queued, turnip_code, description="No description pr
     # Ship the data block over the web
     # Passing the dict to the 'json=' parameter automatically converts it and sets the header
     try:
-        response = requests.post(WEBHOOK_URL, json=payload)
+        response = requests.post(WEBHOOK_URL, json=payload, timeout=10)
 
         # Verify HTTP Response Status
         # Discord returns a 204 No Content code on a flawless webhook transaction
         if response.status_code == 204:
-            app_log(f"[🔥 ALERT SENT]: {name} is buying for {price}!")
+            app_log(f"[System Log]: FOUND ISLAND! {name} is buying for {price}!")
         else:
             app_log(f"[System Log]: Failed to transmit data packet. Server returned code: {response.status_code}")
             app_log(response.text)
@@ -230,13 +257,21 @@ def loadIcon(path):
     except Exception as e:
         messagebox.showerror("Icon Loading Error...\n", f" Failed to load icon: {e}")
         return None
-    
+
+def closeWindow():
+    if messagebox.askokcancel("Exit", "Do you want to exit Turnip Radar?"):
+        if ALLOW_COUNT or SAVE_LOG:
+            app_log(f"[System Log]: Windowed-Shutdown requested. Total Completed Scans: {scanCount}")
+        else:
+            app_log("[System Log]: Windowed-Shutdown requested. Exiting radar.")
+        root.destroy()    
 if HEADLESS:
     headlessLoop()
 else:
+    
     root = tk.Tk()
     root.title("Turnip Market Radar")
-    daisyPhoto = loadIcon("assets\\Daisy_Mae_NH_Character_Icon.png")
+    daisyPhoto = loadIcon("assets/daisy.png")
     if daisyPhoto:
         try:
             root.iconphoto(True, daisyPhoto)
@@ -255,6 +290,7 @@ else:
     )
     log_display.pack(padx=10, pady=10, fill=tk.BOTH, expand=True)
 
-    windowLog(f"System Initialized. Radar sweeping target prices >= {TARGET_MIN_PRICE}...")
+    app_log(f"[System Log]: Radar Initialized. Radar sweeping target prices >= {TARGET_MIN_PRICE}...")
     root.after(1000, radarCycleGui)
+    root.protocol("WM_DELETE_WINDOW", closeWindow)
     root.mainloop()
