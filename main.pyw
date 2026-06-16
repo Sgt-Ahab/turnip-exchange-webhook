@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import scrolledtext
+from tkinter import scrolledtext, messagebox
 from datetime import datetime
 import requests, sys, json, time
 from pathlib import Path
@@ -9,6 +9,9 @@ CONFIG_PATH = Path("config.json")
 # Keep tracked of already flagged islands
 SEEN_ISLE_IDS = set()
 scanCount = 0
+wipeCount = 0
+totalIDsWipedinSession = 0
+lastCacheClearTime = time.time()
 
 def loadConfig():
     if not CONFIG_PATH.exists():
@@ -16,6 +19,7 @@ def loadConfig():
         sys.exit(1)
     with CONFIG_PATH.open("r", encoding="utf-8") as file:
         return json.load(file)
+    
 config = loadConfig()
 WEBHOOK_URL = config["webhook_url"]
 TARGET_MIN_PRICE = config.get("target_min_price", 300)
@@ -24,6 +28,7 @@ POLL_INTERVAL_MS = POLL_INTERVAL_SECONDS * 1000
 USER_AGENT_STR = config["user_agent"]
 HEADLESS = config.get("headless", False)
 ALLOW_COUNT = config.get("allow_count", False)
+SAVE_LOG = config.get("save_log", False)
 
 def headlessLoop():
     try:
@@ -31,30 +36,42 @@ def headlessLoop():
         while True:
             radarCycleOnce()
             time.sleep(POLL_INTERVAL_SECONDS)
-    except KeyboardInterrupt:
-        if ALLOW_COUNT:
+    except KeyboardInterrupt or SystemExit: 
+        if ALLOW_COUNT or SAVE_LOG:
             app_log(f"Shutdown requested. Total Completed Scans: {scanCount}")
         else:
             app_log("Shutdown requested. Exiting radar.")
 
 
 def radarCycleOnce():
+    global lastCacheClearTime, totalIDsWipedinSession
+    
+    # Cache Cycle (4-Hour Rule)
+    currentTime = time.time()
+    if currentTime - lastCacheClearTime >= 14400: # 14400 = 4 hours; +/- 3600 per hour
+        wipedThisCycle = len(SEEN_ISLE_IDS)
+        totalIDsWipedinSession += wipedThisCycle
+        SEEN_ISLE_IDS.clear()
+        app_log(f"[System Log]: Time threshold met, memory cleared out {wipedThisCycle} entries. (Total Wiped: {totalIDsWipedinSession})")
+        lastCacheClearTime = currentTime
+
     raw_data = fetchRawListings()
     if not raw_data or "islands" not in raw_data:
         app_log("⚠️ Connection Error: Unable to reach endpoint.")
         return
     processFilter(raw_data)
+
     if ALLOW_COUNT:
         global scanCount 
         scanCount += 1
         if scanCount % 10 == 0:
             app_log(
-                f"[System Log] Completed {scanCount} scans; "
+                f"[System Log]: Completed {scanCount} scans; "
                 "Press Ctrl + C to stop the monitor."
             )
         elif scanCount % 5 == 0:
             app_log(
-                f"[System Log] Completed {scanCount} scans."
+                f"[System Log]: Completed {scanCount} scans."
             )
 def radarCycleGui():
     radarCycleOnce()
@@ -83,19 +100,40 @@ def fetchRawListings():
 
 def windowLog(message):
     """Prefixes the log string with local machine time and injects it into the text panel."""
+    global wipeCount
     current_time = datetime.now().strftime("%H:%M:%S")
+    log_display.config(state=tk.NORMAL)
+    # 1,000 Line Threshold Data Compaction Logic
+    try:
+        current_lines = int(log_display.index('end-1c').split('.')[0])
+        # This line is the line check for clearing the buffer
+        if current_lines > 1000:
+            wipeCount += 1
+            log_display.delete("1.0", tk.END)
+            total_lines_cleared = wipeCount * 15
+            log_display.insert(tk.END, f"[System Log]: Buffer cleared. [Wipe #{wipeCount} | ~ {total_lines_cleared} lines condensed!]\n")
+    except Exception:
+        pass
     formatted_entry = f"[{current_time}] {message}\n"
     
     # Unlock box, append text, lock box to keep it tamper-proof, auto-scroll to bottom
-    log_display.config(state=tk.NORMAL)
     log_display.insert(tk.END, formatted_entry)
     log_display.config(state=tk.DISABLED)
     log_display.see(tk.END)
 
 def app_log(message):
+    current_time = datetime.now().strftime("%H:%M:%S")
+    formatted = f"[{current_time}] {message}"
+
+    # Hard-Drive Storage Stream Ouput (Parsing Logs)
+    if SAVE_LOG:
+        try:
+            with open("session_log.txt", "a", encoding="utf-8") as f:
+                f.write(formatted + "\n")
+        except Exception:
+            pass
+
     if HEADLESS:
-        current_time = datetime.now().strftime("%H:%M:%S")
-        formatted = f"[{current_time}] {message}"
         print(formatted)
     else:
         windowLog(message)
@@ -132,9 +170,9 @@ def processFilter(data):
 
             # Check 3, remove Twitch and Treasure Islands
             junk_words = ["twitch", "stream", "treasure", "sub", "t.v", "youtube"]
-            if any(word in description for word in junk_words):
+            if any(word.lower() in description for word in junk_words):
                 # Print to terminal log to see filter is successful:
-                app_log(f"[Filtered]Out]: Found {price} Bell island from {name}, but it had key junk words.")
+                app_log(f"[Filtered Out]: Found {price} Bell island from {name}, but it had key junk words.")
                 SEEN_ISLE_IDS.add(turnip_code)
                 continue
 
@@ -156,7 +194,7 @@ def marketAlert(name, price, queued, turnip_code, description="No description pr
                     f"**PRICE:** {price} Bells per turnip.\n"
                     f"**DESCRIPTION:** {description};"
                     f"**CURRENT QUEUE LENGTH:** {queued} players currently awaiting!\n"
-                    f"*Posted on:* {date}; At {timePost}; \n"
+                    f"*Posted on: {date}; At {timePost}*; \n"
                     f"[Click Here to Join the Queue](https://turnip.exchange/island/{turnip_code})\n\n"
                     
                 ),
@@ -172,21 +210,38 @@ def marketAlert(name, price, queued, turnip_code, description="No description pr
     }
     # Ship the data block over the web
     # Passing the dict to the 'json=' parameter automatically converts it and sets the header
-    response = requests.post(WEBHOOK_URL, json=payload)
+    try:
+        response = requests.post(WEBHOOK_URL, json=payload)
 
-    # Verify HTTP Response Status
-    # Discord returns a 204 No Content code on a flawless webhook transaction
-    if response.status_code == 204:
-        app_log(f"[🔥 ALERT SENT]: {name} is buying for {price}!")
-    else:
-        app_log(f"Failed to transmit data packet. Server returned code: {response.status_code}")
-        app_log(response.text)
+        # Verify HTTP Response Status
+        # Discord returns a 204 No Content code on a flawless webhook transaction
+        if response.status_code == 204:
+            app_log(f"[🔥 ALERT SENT]: {name} is buying for {price}!")
+        else:
+            app_log(f"[System Log]: Failed to transmit data packet. Server returned code: {response.status_code}")
+            app_log(response.text)
+    except Exception as e:
+        app_log(f"[System Log]: Failed to dispatch secure webhook payload links: {e}")
 
+def loadIcon(path):
+    # Finding the Asset image of Daisy for icon
+    try:
+        return tk.PhotoImage(file=path)
+    except Exception as e:
+        messagebox.showerror("Icon Loading Error...\n", f" Failed to load icon: {e}")
+        return None
+    
 if HEADLESS:
     headlessLoop()
 else:
     root = tk.Tk()
     root.title("Turnip Market Radar")
+    daisyPhoto = loadIcon("assets\\Daisy_Mae_NH_Character_Icon.png")
+    if daisyPhoto:
+        try:
+            root.iconphoto(True, daisyPhoto)
+        except Exception as e:
+            messagebox.showerror("Icon Loading Error...\n", f"Failed to set icon: {e}")
     root.geometry("700x300")
     root.configure(bg="#1e1e1e")
 

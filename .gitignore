@@ -27,3 +27,6 @@ logs/
 
 # Privatet local development directory
 personal/
+
+# Avoid personal test log:
+session_log.txt
