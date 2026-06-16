@@ -4,7 +4,7 @@ from datetime import datetime
 import requests, sys, json, time
 from pathlib import Path
 
-CONFIG_PATH = Path("turnip-exchange-webhook\\config.json")
+CONFIG_PATH = Path("config.json")
 # Memory Cache:
 # Keep tracked of already flagged islands
 SEEN_ISLE_IDS = set()
