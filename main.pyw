@@ -187,7 +187,7 @@ if HEADLESS:
 else:
     root = tk.Tk()
     root.title("Turnip Market Radar")
-    root.geometry("450x250")
+    root.geometry("700x300")
     root.configure(bg="#1e1e1e")
 
     log_display = scrolledtext.ScrolledText(
