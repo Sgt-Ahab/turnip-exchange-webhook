@@ -1,0 +1,10 @@
+{
+    "webhook_url": "ENTER DISCORD WEBHOOK HERE",
+    "target_min_price": 300,
+    "poll_interval_seconds": 40, 
+    "user_agent": "ENTER USER-AGENT HERE",
+    "category": "turnips",
+    "islander": "daisy",
+    "headless": false,
+    "allow_count": true
+}

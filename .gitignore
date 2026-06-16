@@ -1,0 +1,26 @@
+# Core Configuration Files (Never commit private credentials)
+config.json
+.env
+
+# Python compilation artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution & Packaging (If using PyInstaller compilation)
+build/
+dist/
+*.spec
+
+# Local Environment Folders
+.venv/
+venv/
+env/
+
+# Editor / IDE configuration caches
+.vscode/
+.idea/
+
+# Local logging outputs
+logs/
+*.log
