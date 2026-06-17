@@ -1,5 +1,6 @@
 # Turnips.Exchange Discord Notifier
 
+[![GitHub release](https://img.shields.io/github/v/release/sgt-ahab/turnip-exchange-webhook)](https://github.com/sgt-ahab/turnip-exchange-webhook/releases)<br>
 An unofficial Python notifier utility that polls Turnips.Exchange at a configurable interval and pushes real-time matching market spike alerts to an external Discord webhook channel. It features a responsive Tkinter-based live console monitor or a fully headless system mode for background loops.
 
 > **Safety Notice:** This project is unofficial and is intended for respectful, low-frequency polling!
